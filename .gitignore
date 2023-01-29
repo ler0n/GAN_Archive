@@ -1,3 +1,10 @@
+## Hide Files
+# Secret
+secret.ini
+
+# log
+**/wandb/
+
 ### macOS ###
 # General
 .DS_Store
@@ -6,7 +13,6 @@
 
 # Icon must end with two \r
 Icon
-
 
 # Thumbnails
 ._*
