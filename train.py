@@ -1,12 +1,11 @@
 import torch
-import wandb
 import argparse
 import configparser
-import neptune.new as neptune
 
 from dataset import BaseDataset
 from util import set_seed, get_image_plot
 from model import BaseGenerator, BaseDiscriminator
+from logger import BaseLogger, WandbLogger, NeptuneLogger
 
 from tqdm import tqdm
 from torch.optim import Adam
@@ -14,7 +13,7 @@ from torch.nn import BCELoss
 from torch.utils.data import DataLoader
 
 
-def train(args, run):
+def train(args, logger):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     dataset = BaseDataset()
@@ -75,22 +74,17 @@ def train(args, run):
         
         gen_loss = g_loss.detach().cpu().item()
         dis_loss = d_loss.detach().cpu().item()
-        tbar.set_postfix({
+        loss_dict = {
             'g_loss': gen_loss,	
             'd_loss': dis_loss
-        })
-
-        if args.log_type == 1:
-            run['train/g_loss'].append(gen_loss)
-            run['train/d_loss'].append(dis_loss)
-        elif args.log_type == 2:
-            run.log({'g_loss': gen_loss, 'd_loss': dis_loss})
+        }
+        tbar.set_postfix(loss_dict)
+        logger.write_log(loss_dict)
 
         if epoch % 5 != 0: continue
         fig = get_image_plot(generator, device, args.noise_dim)
         fig.suptitle(f'Epoch {epoch} result')
-        if args.log_type == 1: run[f'train/result-epoch{epoch}'].upload(fig)
-        if args.log_type == 2: run.log({'generate_result': fig})
+        logger.write_figure(fig)
         
     
 if __name__ == '__main__':
@@ -120,22 +114,12 @@ if __name__ == '__main__':
     # load secrets
     config = configparser.ConfigParser()
     config.read('secret.ini')
-
-    run = None
     
-    if args.log_type == 1:
-        run = neptune.init_run(
-            project=config['NEPTUNE']['PROJECT_NAME'],
-            api_token=config['NEPTUNE']['API_TOKEN'],
-        )
-        run['parameters'] = args
-    elif args.log_type == 2:
-        wandb.login(key=config['WANDB']['API_TOKEN'])
-        run = wandb.init(project=config['WANDB']['PROJECT_NAME'])
-        run.config.update(args)
-
+    if args.log_type == 1: logger = NeptuneLogger(config, args)
+    elif args.log_type == 2: logger = WandbLogger(config, args)
+    else: logger = BaseLogger()
+        
     set_seed(42)
-    train(args, run)
+    train(args, logger)
 
-    if args.log_type == 1: run.stop()
-    elif args.log_type == 2: run.finish()
+    logger.finish()
