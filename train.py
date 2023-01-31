@@ -110,7 +110,7 @@ if __name__ == '__main__':
                       help='generator layer dimensions')
     args.add_argument('--dis_layer_dim', type=list, default=[1024, 512, 256], 
                       help='discriminator layer dimensions')
-    args.add_argument('--dropout_rate', type=float, default=0.3, help='ratio if dropout')
+    args.add_argument('--dropout_rate', type=float, default=0.3, help='ratio of dropout')
     
     # log option
     args.add_argument('--log_type', type=int, default=2, 
