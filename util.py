@@ -17,7 +17,7 @@ def set_seed(random_seed=42):
 def get_image_plot(model, device, noise_dim):
     model.eval()
     with torch.no_grad():
-        noise = torch.FloatTensor(size=(24, noise_dim), device=device).normal_(0, 1)
+        noise = torch.FloatTensor(size=(24, noise_dim)).normal_(0, 1).to(device)
         gen_res = model(noise).view(24, 28, 28).cpu().numpy()
 
     fig, axes = plt.subplots(4, 6, figsize=(8, 4))

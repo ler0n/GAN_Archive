@@ -42,8 +42,7 @@ def train(args, logger):
                 generator.eval()
                 discriminator.train()
 
-                noise = torch.FloatTensor(size=(x.shape[0], args.noise_dim), 
-                                          device=device).uniform_(-1, 1)
+                noise = torch.FloatTensor(size=(x.shape[0], args.noise_dim)).uniform_(-1, 1).to(device)
                 gen_res = generator(noise)
 
                 x_dis = torch.cat((x, gen_res), dim=0)
@@ -62,9 +61,8 @@ def train(args, logger):
             generator.train()
             discriminator.eval()
     
-            noise = torch.FloatTensor(size=(x.shape[0], args.noise_dim), 
-                                        device=device).uniform_(-1, 1)
-            gen_label = torch.ones(x.shape[0])
+            noise = torch.FloatTensor(size=(x.shape[0], args.noise_dim)).uniform_(-1, 1).to(device)
+            gen_label = torch.ones(x.shape[0]).to(device)
             gen_res = generator(noise)
             gen_res = discriminator(gen_res)
             g_loss = loss(gen_res, gen_label)
