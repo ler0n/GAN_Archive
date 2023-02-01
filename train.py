@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 
 
 def train(args, logger):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = f'cuda:{args.device_num}' if torch.cuda.is_available() else 'cpu'
 
     dataset = BaseDataset()
     dataloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
@@ -82,7 +82,7 @@ def train(args, logger):
         if epoch % 5 != 0: continue
         fig = get_image_plot(generator, device, args.noise_dim)
         fig.suptitle(f'Epoch {epoch} result')
-        logger.write_figure(fig)
+        logger.write_figure(epoch, fig)
         
     
 if __name__ == '__main__':
