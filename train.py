@@ -107,6 +107,11 @@ if __name__ == '__main__':
     # log option
     args.add_argument('--log_type', type=int, default=2, 
                       help='0 = not log, 1 = neptune, 2 = wandb')
+
+    # gpu device option
+    args.add_argument('--device_num', type=int, default=0, 
+                      help='number of gpu device to use')
+
     args = args.parse_args()
 
     # load secrets
