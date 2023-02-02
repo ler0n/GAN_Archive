@@ -30,7 +30,6 @@ class BaseDiscriminator(nn.Module):
     def __init__(self, layer_dims, dropout_rate):
         super(BaseDiscriminator, self).__init__()
         self.layers = VanillaBlock(layer_dims, dropout_rate)
-        self._initialize_parameter()
 
     def _initialize_parameter(self):
         for layer in self.modules():
