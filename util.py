@@ -1,5 +1,6 @@
 import torch
 import random
+import torchvision
 import numpy as np
 
 import matplotlib.pyplot as plt 
@@ -18,11 +19,11 @@ def get_image_plot(model, device, noise_dim):
     model.eval()
     with torch.no_grad():
         noise = torch.FloatTensor(size=(24, noise_dim)).normal_(0, 1).to(device)
-        gen_res = model(noise).view(24, 28, 28).cpu().numpy()
-
-    fig, axes = plt.subplots(4, 6, figsize=(8, 4))
-    axes = axes.flatten()
-    for i in range(24):
-        axes[i].imshow(gen_res[i], interpolation='nearest', cmap='gray')
-        axes[i].axis('off')
+        gen_res = model(noise).detach().view(24, 28, 28).unsqueeze(1).cpu()
+    
+    img = torchvision.utils.make_grid(gen_res, nrow=6, normalize=True, padding=1)
+    fig, ax = plt.subplots()
+    ax.imshow(img.permute(1, 2, 0))
+    ax.axis('off')
+    fig.tight_layout()
     return fig
