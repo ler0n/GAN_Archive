@@ -47,7 +47,7 @@ def train(args, logger):
 
                 x_dis = torch.cat((x, gen_res), dim=0)
                 label = torch.zeros(x.shape[0] * 2, device=device)
-                label[:x.shape[0]] = 0.9
+                label[:x.shape[0]] = 1.0
 
                 dis_res = discriminator(x_dis)
                 d_loss = loss(dis_res, label)
