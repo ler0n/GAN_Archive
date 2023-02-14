@@ -30,7 +30,7 @@ class BaseDataset(Dataset):
 
 class DCGANDataset(Dataset):
     def __init__(self, data_path):
-        super.__init__()
+        super().__init__()
         self._preprocess(data_path)
         self.transform = transforms.Compose([
             transforms.ToTensor(),
@@ -38,18 +38,18 @@ class DCGANDataset(Dataset):
         ])
     
     def _preprocess(self, data_path):
-        self.data = np.array()
+        self.data = []
         data_path = glob.glob(os.path.join(data_path, '*.png')) 
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(0.5, 0.5)
         ])
-        for path in self.data_path:
+        for path in data_path:
             img = Image.open(path)
-            np.append(self.data, transform(img).unsqueeze(0))
+            self.data.append(transform(img))
 
     def __len__(self):
-        return self.data.shape[0]
+        return len(self.data)
     
     def __getitem__(self, idx):
         return self.data[idx]
