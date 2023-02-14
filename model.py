@@ -39,3 +39,41 @@ class BaseDiscriminator(nn.Module):
 
     def forward(self, x):
         return torch.sigmoid(self.layers(x).squeeze())
+
+
+class DCGenerator(nn.Module):
+    def __init__(self, latent_dim, channels):
+        super().__init__()
+        layers = []
+        layers.append(nn.ConvTranspose2d(latent_dim, channels[0], 4, 1, 0, bias=False))
+        for in_ch, out_ch in zip(channels[:-2], channels[1:-1]):
+            layers.append(nn.ConvTranspose2d(in_ch, out_ch, 4, 2, 1, bias=False))
+            layers.append(nn.BatchNorm2d(out_ch, momentum=0.8))
+            layers.append(nn.ReLU())
+        layers.append(nn.Conv2d(channels[-2], channels[-1], 3, 1, 1, bias=False))
+        layers.append(nn.Tanh())
+        self.layer = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        x = x.unsqueeze(-1).unsqueeze(-1)
+        return self.layer(x)
+
+
+class DCDiscriminator(nn.Module):
+    def __init__(self, channels, dropout_rate):
+        super().__init__()
+        layers = []
+
+        for idx in range(1, len(channels)):
+            if idx != 0: layers.append(nn.Dropout2d(dropout_rate))
+            layers.append(nn.Conv2d(channels[idx - 1], channels[idx], 4, 2, 1))
+            if idx != 0: layers.append(nn.BatchNorm2d(channels[idx], momentum=0.8))
+            layers.append(nn.LeakyReLU(0.2))
+        layers.append(nn.Dropout(dropout_rate))
+        layers.append(nn.Flatten())
+        layers.append(nn.Linear(channels[-1], 1))
+        layers.append(nn.Sigmoid())
+        self.layer = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.layer(x).squeeze(-1)
