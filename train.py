@@ -2,9 +2,9 @@ import torch
 import argparse
 import configparser
 
-from dataset import BaseDataset
+from dataset import BaseDataset, DCGANDataset
 from util import set_seed, get_image_plot
-from model import BaseGenerator, BaseDiscriminator
+from model import BaseGenerator, BaseDiscriminator, DCGenerator, DCDiscriminator
 from logger import BaseLogger, WandbLogger, NeptuneLogger
 
 from tqdm import tqdm
@@ -13,18 +13,29 @@ from torch.nn import BCELoss
 from torch.utils.data import DataLoader
 
 
+def get_model_and_dataloader(args):
+    dataloader, generator, discriminator = None, None, None
+
+    if args.model_type.lower() == 'gan':
+        dataset = BaseDataset()
+        image_dim = dataset[0].shape[0]
+        args.gen_layer_dim = [args.latent_dim] + args.gen_layer_dim + [image_dim]
+        args.dis_layer_dim = [image_dim] + args.dis_layer_dim + [1]
+        generator = BaseGenerator(args.gen_layer_dim)
+        discriminator = BaseDiscriminator(args.dis_layer_dim)
+    if args.model_type.lower() == 'dcgan':
+        dataset = DCGANDataset(args.data_path)
+        generator = DCGenerator(args.latent_dim, args.gen_channels)
+        discriminator = DCDiscriminator(args.dis_channels, args.dropout_rate)
+    dataloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
+    return generator, discriminator, dataloader
+
 def train(args, logger):
     device = f'cuda:{args.device_num}' if torch.cuda.is_available() else 'cpu'
 
-    dataset = BaseDataset()
-    dataloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
-
-    image_dim = dataset[0].shape[0]
-    args.gen_layer_dim = [args.noise_dim] + args.gen_layer_dim + [image_dim]
-    args.dis_layer_dim = [image_dim] + args.dis_layer_dim + [1]
-
-    generator = BaseGenerator(args.gen_layer_dim).to(device)
-    discriminator = BaseDiscriminator(args.dis_layer_dim, args.dropout_rate).to(device)
+    generator, discriminator, dataloader = get_model_and_dataloader(args)
+    generator.to(device)
+    discriminator.to(device)
     
     loss = BCELoss()
     gen_optimizer = Adam(generator.parameters(), lr=args.lr_rate, betas=(args.beta, 0.999))
@@ -42,8 +53,8 @@ def train(args, logger):
                 generator.eval()
                 discriminator.train()
 
-                noise = torch.FloatTensor(size=(x.shape[0], args.noise_dim)).uniform_(-1, 1).to(device)
-                gen_res = generator(noise)
+                latent = torch.FloatTensor(size=(x.shape[0], args.latent_dim)).uniform_(-1, 1).to(device)
+                gen_res = generator(latent)
 
                 x_dis = torch.cat((x, gen_res), dim=0)
                 label = torch.zeros(x.shape[0] * 2, device=device)
@@ -61,9 +72,9 @@ def train(args, logger):
             generator.train()
             discriminator.eval()
     
-            noise = torch.FloatTensor(size=(x.shape[0], args.noise_dim)).uniform_(-1, 1).to(device)
+            latent = torch.FloatTensor(size=(x.shape[0], args.latent_dim)).uniform_(-1, 1).to(device)
             gen_label = torch.ones(x.shape[0]).to(device)
-            gen_res = generator(noise)
+            gen_res = generator(latent)
             gen_res = discriminator(gen_res)
             g_loss = loss(gen_res, gen_label)
 
@@ -80,10 +91,11 @@ def train(args, logger):
         logger.write_log(loss_dict)
 
         if epoch % 5 != 0: continue
-        fig = get_image_plot(generator, device, args.noise_dim)
+        fig = get_image_plot(generator, device, args.latent_dim)
         fig.suptitle(f'Epoch {epoch} result')
         logger.write_figure(epoch, fig)
-        
+        torch.save(generator.state_dict(), os.path.join(args.save_path, 'generator.pth'))
+        torch.save(discriminator.state_dict(), os.path.join(args.save_path, 'discriminator.pth'))
     
 if __name__ == '__main__':
     args = argparse.ArgumentParser()
@@ -96,17 +108,31 @@ if __name__ == '__main__':
     args.add_argument('--dis_iter', type=int, default=1, 
                       help='discriminator train iteration per epoch')
 
-    # model hyperparameter
-    args.add_argument('--noise_dim', type=int, default=10, help='noise dimension')
+    # common model hyperparameter
+    args.add_argument('--latent_dim', type=int, default=100, help='noise dimension')
+    args.add_argument('--dropout_rate', type=float, default=0.3, help='ratio of dropout')
+    
+    # for vanilla gan
     args.add_argument('--gen_layer_dim', type=list, default=[256, 512, 1024], 
                       help='generator layer dimensions')
     args.add_argument('--dis_layer_dim', type=list, default=[1024, 512, 256], 
                       help='discriminator layer dimensions')
-    args.add_argument('--dropout_rate', type=float, default=0.3, help='ratio of dropout')
     
-    # log option
+    # for dcgan
+    args.add_argument('--gen_channels', type=list, default=[256, 256, 256, 128, 128, 1], 
+                      help='generator layer channels')
+    args.add_argument('--dis_channels', type=list, default=[1, 32, 64, 128, 256, 512, 512], 
+                      help='discriminator layer channels')
+    
+    # log, path, model type option
+    args.add_argument('--model_type', type=str, default='dcgan', 
+                      help='model type to train(gan, dcgan)')
     args.add_argument('--log_type', type=int, default=2, 
                       help='0 = not log, 1 = neptune, 2 = wandb')
+    args.add_argument('--data_path', type=str, default='./data/letters', 
+                      help='path for train data')
+    args.add_argument('--save_path', type=str, default='./saved', 
+                      help='path for save model parameters')
 
     # gpu device option
     args.add_argument('--device_num', type=int, default=0, 
