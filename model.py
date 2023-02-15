@@ -46,7 +46,7 @@ class DCGenerator(nn.Module):
         super().__init__()
         layers = []
 
-        channels.append(out_channel)
+        channels= [*channels, out_channel]
         layers.append(nn.ConvTranspose2d(latent_dim, channels[0], 4, 1, 0, bias=False))
         for idx in range(1, len(channels)):
             layers.append(nn.ConvTranspose2d(channels[idx - 1], channels[idx], 4, 2, 1, bias=False))
@@ -75,7 +75,7 @@ class DCDiscriminator(nn.Module):
         super().__init__()
         layers = []
 
-        channels = [in_channel] + channels
+        channels = [in_channel, *channels]
         for idx in range(1, len(channels)):
             if idx != 1: layers.append(nn.Dropout2d(dropout_rate))
             layers.append(nn.Conv2d(channels[idx - 1], channels[idx], 4, 2, 1, bias=False))
@@ -95,4 +95,4 @@ class DCDiscriminator(nn.Module):
                 nn.init.constant_(m.bias.data, 0)
 
     def forward(self, x):
-        return self.layer(x).squeeze(-1)
+        return self.layer(x).squeeze()
