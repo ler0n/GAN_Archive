@@ -1,3 +1,4 @@
+import os
 import torch
 import argparse
 import configparser
@@ -25,13 +26,14 @@ def get_model_and_dataloader(args):
         discriminator = BaseDiscriminator(args.dis_layer_dim)
     if args.model_type.lower() == 'dcgan':
         dataset = DCGANDataset(args.data_path)
-        generator = DCGenerator(args.latent_dim, args.gen_channels)
-        discriminator = DCDiscriminator(args.dis_channels, args.dropout_rate)
+        generator = DCGenerator(args.latent_dim, args.channel_num, args.channel_list)
+        discriminator = DCDiscriminator(args.channel_num, args.channel_list, args.dropout_rate)
     dataloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
     return generator, discriminator, dataloader
 
 def train(args, logger):
     device = f'cuda:{args.device_num}' if torch.cuda.is_available() else 'cpu'
+    latent_test = torch.FloatTensor(size=(24, args.latent_dim)).normal_(0, 1).to(device)
 
     generator, discriminator, dataloader = get_model_and_dataloader(args)
     generator.to(device)
@@ -44,54 +46,51 @@ def train(args, logger):
     for epoch in range(1, args.epoch + 1):
         tbar = tqdm(dataloader)
         tbar.set_description(f'Epoch {epoch}')
+        d_loss, g_loss = 0, 0
         for x in tbar:
             x = x.to(device)
             for _ in range(args.dis_iter):
-                gen_optimizer.zero_grad()
-                dis_optimizer.zero_grad()
+                discriminator.zero_grad()
 
-                generator.eval()
-                discriminator.train()
+                pos_res = discriminator(x)
+                pos_label = torch.ones(x.shape[0], device=device)
+                pos_loss= loss(pos_res, pos_label)
+                pos_loss.backward()
 
-                latent = torch.FloatTensor(size=(x.shape[0], args.latent_dim)).uniform_(-1, 1).to(device)
-                gen_res = generator(latent)
-
-                x_dis = torch.cat((x, gen_res), dim=0)
-                label = torch.zeros(x.shape[0] * 2, device=device)
-                label[:x.shape[0]] = 1.0
-
-                dis_res = discriminator(x_dis)
-                d_loss = loss(dis_res, label)
-
-                d_loss.backward()
+                latent = torch.FloatTensor(size=(x.shape[0], args.latent_dim)).normal_(0, 1).to(device)
+                with torch.no_grad():
+                    gen_res = generator(latent)
+                neg_res = discriminator(gen_res)
+                neg_label = torch.zeros(x.shape[0], device=device)
+                neg_loss = loss(neg_res, neg_label)
+                neg_loss.backward()
+                dis_loss = neg_loss + pos_loss
+                d_loss += dis_loss.detach().cpu().item()
                 dis_optimizer.step()
-            
-            gen_optimizer.zero_grad()
-            dis_optimizer.zero_grad()
 
-            generator.train()
-            discriminator.eval()
+            generator.zero_grad()
     
-            latent = torch.FloatTensor(size=(x.shape[0], args.latent_dim)).uniform_(-1, 1).to(device)
-            gen_label = torch.ones(x.shape[0]).to(device)
+            latent = torch.FloatTensor(size=(x.shape[0], args.latent_dim)).normal_(0, 1).to(device)
+            dis_label = torch.ones(x.shape[0]).to(device)
             gen_res = generator(latent)
-            gen_res = discriminator(gen_res)
-            g_loss = loss(gen_res, gen_label)
+            dis_res = discriminator(gen_res)
+            gen_loss = loss(dis_res, dis_label)
 
-            g_loss.backward()
+            gen_loss.backward()
+            g_loss += gen_loss.detach().cpu().item()
             gen_optimizer.step()
         
-        gen_loss = g_loss.detach().cpu().item()
-        dis_loss = d_loss.detach().cpu().item()
+        g_loss /= len(dataloader)
+        d_loss /= len(dataloader)
         loss_dict = {
-            'g_loss': gen_loss,	
-            'd_loss': dis_loss
+            'g_loss': g_loss,	
+            'd_loss': d_loss
         }
         tbar.set_postfix(loss_dict)
         logger.write_log(loss_dict)
 
-        if epoch % 5 != 0: continue
-        fig = get_image_plot(generator, device, args.latent_dim)
+        if epoch != args.epoch and epoch % args.save_interval != 0: continue
+        fig = get_image_plot(generator, latent_test, args.channel_num, args.width, args.height)
         fig.suptitle(f'Epoch {epoch} result')
         logger.write_figure(epoch, fig)
         torch.save(generator.state_dict(), os.path.join(args.save_path, 'generator.pth'))
@@ -105,6 +104,8 @@ if __name__ == '__main__':
     args.add_argument('--batch_size', type=int, default=128, help='batch size')
     args.add_argument('--lr_rate', type=float, default=2e-4, help='learning rate')
     args.add_argument('--beta', type=float, default=5e-1, help='beta value')
+    args.add_argument('--width', type=int, default=64, help='width value')
+    args.add_argument('--height', type=int, default=64, help='height value')
     args.add_argument('--dis_iter', type=int, default=1, 
                       help='discriminator train iteration per epoch')
 
@@ -119,16 +120,18 @@ if __name__ == '__main__':
                       help='discriminator layer dimensions')
     
     # for dcgan
-    args.add_argument('--gen_channels', type=list, default=[256, 256, 256, 128, 128, 1], 
-                      help='generator layer channels')
-    args.add_argument('--dis_channels', type=list, default=[1, 32, 64, 128, 256, 512, 512], 
-                      help='discriminator layer channels')
+    args.add_argument('--channel_num', type=int, default=1, 
+                      help='number of output data channel')
+    args.add_argument('--channel_list', type=list, default=[16, 64, 128, 256], 
+                      help='model layer channels')
     
-    # log, path, model type option
+    # log, save interval, path, model type option
     args.add_argument('--model_type', type=str, default='dcgan', 
                       help='model type to train(gan, dcgan)')
     args.add_argument('--log_type', type=int, default=2, 
                       help='0 = not log, 1 = neptune, 2 = wandb')
+    args.add_argument('--save_interval', type=int, default=15, 
+                      help='interval for saving model state')
     args.add_argument('--data_path', type=str, default='./data/letters', 
                       help='path for train data')
     args.add_argument('--save_path', type=str, default='./saved', 

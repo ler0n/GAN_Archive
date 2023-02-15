@@ -15,11 +15,10 @@ def set_seed(random_seed=42):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-def get_image_plot(model, device, noise_dim):
+def get_image_plot(model, latent, width, height):
     model.eval()
     with torch.no_grad():
-        noise = torch.FloatTensor(size=(24, noise_dim)).normal_(0, 1).to(device)
-        gen_res = model(noise).detach().view(24, 28, 28).unsqueeze(1).cpu()
+        gen_res = model(latent).detach().view(24, 1, width, height).cpu()
     
     img = torchvision.utils.make_grid(gen_res, nrow=6, normalize=True, padding=1)
     fig, ax = plt.subplots()
