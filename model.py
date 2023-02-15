@@ -55,7 +55,16 @@ class DCGenerator(nn.Module):
                 layers.append(nn.ReLU())
         layers.append(nn.Tanh())
         self.layer = nn.Sequential(*layers)
+        self._initialize()
     
+    def _initialize(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight.data, 0.0, 0.02)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.normal_(m.weight.data, 1.0, 0.02)
+                nn.init.constant_(m.bias.data, 0)
+
     def forward(self, x):
         x = x.unsqueeze(-1).unsqueeze(-1)
         return self.layer(x)
@@ -75,6 +84,15 @@ class DCDiscriminator(nn.Module):
         layers.append(nn.Conv2d(channels[-1], 1, 4, 1, 0, bias=False))
         layers.append(nn.Sigmoid())
         self.layer = nn.Sequential(*layers)
+        self._initialize()
     
+    def _initialize(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight.data, 0.0, 0.02)
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.normal_(m.weight.data, 1.0, 0.02)
+                nn.init.constant_(m.bias.data, 0)
+
     def forward(self, x):
         return self.layer(x).squeeze(-1)
