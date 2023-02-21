@@ -3,10 +3,11 @@ import torch
 import argparse
 import configparser
 
-from dataset import BaseDataset, DCGANDataset
-from util import set_seed, get_image_plot
-from model import BaseGenerator, BaseDiscriminator, DCGenerator, DCDiscriminator
+from model import *
+from loss import P2PGeneratorLoss, P2PDiscriminatorLoss
+from dataset import BaseDataset, DCGANDataset, P2PDataset
 from logger import BaseLogger, WandbLogger, NeptuneLogger
+from util import set_seed, get_image_plot, get_image_plot2, convert_path_to_tensor
 
 from tqdm import tqdm
 from torch.optim import Adam
@@ -28,8 +29,72 @@ def get_model_and_dataloader(args):
         dataset = DCGANDataset(args.data_path)
         generator = DCGenerator(args.latent_dim, args.channel_num, args.channel_list)
         discriminator = DCDiscriminator(args.channel_num, args.channel_list, args.dropout_rate)
+    if args.model_type.lower() == 'pix2pix':
+        dataset = P2PDataset(args.data_path)
+        generator = P2PGenerator(args.channel_num, args.channel_list, args.dropout_rate)
+        discriminator = P2PDiscriminator(args.channel_num, args.channel_list)
     dataloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
     return generator, discriminator, dataloader
+
+def i2i_gan_train(args, logger):
+    device = f'cuda:{args.device_num}' if torch.cuda.is_available() else 'cpu'
+    test_img, test_true = convert_path_to_tensor(args.test_img_path)
+    test_img = test_img.to(device)
+    test_true = test_true.to(device)
+
+    generator, discriminator, dataloader = get_model_and_dataloader(args)
+    generator.to(device)
+    discriminator.to(device)
+    
+    gen_loss = P2PGeneratorLoss(args.lmd).to(device)
+    dis_loss = P2PDiscriminatorLoss().to(device)
+    gen_optimizer = Adam(generator.parameters(), lr=args.lr_rate, betas=(args.beta, 0.999))
+    dis_optimizer = Adam(discriminator.parameters(), lr=args.lr_rate, betas=(args.beta, 0.999))
+
+    for epoch in range(1, args.epoch + 1):
+        tbar = tqdm(dataloader)
+        tbar.set_description(f'Epoch {epoch}')
+        d_loss, g_loss = 0, 0
+        for x, y in tbar:
+            x = x.to(device)
+            y = y.to(device)
+            for _ in range(args.dis_iter):
+                discriminator.zero_grad()
+
+                pos_res = discriminator(y)
+
+                with torch.no_grad():
+                    gen_res = generator(x)
+                neg_res = discriminator(gen_res)
+                disc_loss = dis_loss(pos_res, neg_res)
+                disc_loss.backward()
+                d_loss += disc_loss.detach().cpu().item()
+                dis_optimizer.step()
+
+            generator.zero_grad()
+    
+            gen_res = generator(x)
+            dis_res = discriminator(gen_res)
+            gene_loss = gen_loss(dis_res, gen_res, y)
+            gene_loss.backward()
+            g_loss += gene_loss.detach().cpu().item()
+            gen_optimizer.step()
+        
+        g_loss /= len(dataloader)
+        d_loss /= len(dataloader)
+        loss_dict = {
+            'g_loss': g_loss,	
+            'd_loss': d_loss
+        }
+        tbar.set_postfix(loss_dict)
+        logger.write_log(loss_dict)
+
+        if epoch != args.epoch and epoch % args.save_interval != 0: continue
+        fig = get_image_plot2(generator, test_img, test_true)
+        fig.suptitle(f'Epoch {epoch} result')
+        logger.write_figure(epoch, fig)
+        torch.save(generator.state_dict(), os.path.join(args.save_path, 'p2_generator.pth'))
+        torch.save(discriminator.state_dict(), os.path.join(args.save_path, 'p2_discriminator.pth'))
 
 def train(args, logger):
     device = f'cuda:{args.device_num}' if torch.cuda.is_available() else 'cpu'
@@ -119,15 +184,17 @@ if __name__ == '__main__':
     args.add_argument('--dis_layer_dim', type=list, default=[1024, 512, 256], 
                       help='discriminator layer dimensions')
     
-    # for dcgan
+    # for dcgan, pix2pix
     args.add_argument('--channel_num', type=int, default=1, 
                       help='number of output data channel')
-    args.add_argument('--channel_list', type=list, default=[16, 64, 128, 256], 
+    args.add_argument('--channel_list', type=list, default=[16, 64, 128, 256, 512], 
                       help='model layer channels')
+    args.add_argument('--lmd', type=int, default=100,
+                      help='value of lambda for calculate generator loss')
     
     # log, save interval, path, model type option
-    args.add_argument('--model_type', type=str, default='dcgan', 
-                      help='model type to train(gan, dcgan)')
+    args.add_argument('--model_type', type=str, default='pix2pix', 
+                      help='model type to train(gan, dcgan, pix2pix)')
     args.add_argument('--log_type', type=int, default=2, 
                       help='0 = not log, 1 = neptune, 2 = wandb')
     args.add_argument('--save_interval', type=int, default=15, 
@@ -136,6 +203,8 @@ if __name__ == '__main__':
                       help='path for train data')
     args.add_argument('--save_path', type=str, default='./saved', 
                       help='path for save model parameters')
+    args.add_argument('--test_img_path', type=str, default='./data/letters/한',
+                      help='path for test image')
 
     # gpu device option
     args.add_argument('--device_num', type=int, default=0, 
@@ -152,6 +221,7 @@ if __name__ == '__main__':
     else: logger = BaseLogger()
         
     set_seed(42)
-    train(args, logger)
+    if args.model_type.lower() != 'pix2pix': train(args, logger)
+    else: i2i_gan_train(args, logger)
 
     logger.finish()
