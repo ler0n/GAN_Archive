@@ -40,7 +40,6 @@ def i2i_gan_train(args, logger):
     device = f'cuda:{args.device_num}' if torch.cuda.is_available() else 'cpu'
     test_img, test_true = convert_path_to_tensor(args.test_img_path)
     test_img = test_img.to(device)
-    test_true = test_true.to(device)
 
     generator, discriminator, dataloader = get_model_and_dataloader(args)
     generator.to(device)

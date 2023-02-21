@@ -34,8 +34,8 @@ def get_image_plot(model, latent, channel, width, height):
 
 def get_image_plot2(model, data, truth):
     model.eval()
-    gen_res = model(data)
-    imgs = [data, truth, gen_res]
+    gen_res = model(data.unsqueeze(0)).squeeze(0).detach().cpu()
+    imgs = [data.detach().cpu(), truth, gen_res]
     fig, axes = plt.subplots(1, 3)
     for ax, img in zip(axes, imgs):
         ax.imshow(img.permute(1, 2, 0))
