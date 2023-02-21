@@ -75,7 +75,7 @@ class DCDiscriminator(nn.Module):
         super().__init__()
         layers = []
 
-        channels = [in_channel * 2, *channels]
+        channels = [in_channel, *channels]
         for idx in range(1, len(channels)):
             if idx != 1: layers.append(nn.Dropout2d(dropout_rate))
             layers.append(nn.Conv2d(channels[idx - 1], channels[idx], 4, 2, 1, bias=False))
