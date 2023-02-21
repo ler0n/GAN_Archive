@@ -75,7 +75,7 @@ class DCDiscriminator(nn.Module):
         super().__init__()
         layers = []
 
-        channels = [in_channel, *channels]
+        channels = [in_channel * 2, *channels]
         for idx in range(1, len(channels)):
             if idx != 1: layers.append(nn.Dropout2d(dropout_rate))
             layers.append(nn.Conv2d(channels[idx - 1], channels[idx], 4, 2, 1, bias=False))
@@ -140,7 +140,7 @@ class P2PDiscriminator(nn.Module):
         super().__init__()
         layers = []
 
-        channels = [in_channel, *channels][:4]
+        channels = [in_channel * 2, *channels][:4]
         for idx in range(1, len(channels)):
             layers.append(nn.Conv2d(channels[idx - 1], channels[idx], 4, 2, 1, bias=False))
             if idx != 1: layers.append(nn.BatchNorm2d(channels[idx]))

@@ -60,11 +60,14 @@ def i2i_gan_train(args, logger):
             y = y.to(device)
             for _ in range(args.dis_iter):
                 discriminator.zero_grad()
-
-                pos_res = discriminator(y)
+                
+                y_in = torch.cat([y, y], axis=1)
+                pos_res = discriminator(y_in)
 
                 with torch.no_grad():
                     gen_res = generator(x)
+                
+                gen_res = torch.cat([gen_res, y], axis=1)
                 neg_res = discriminator(gen_res)
                 disc_loss = dis_loss(pos_res, neg_res)
                 disc_loss.backward()
@@ -74,6 +77,7 @@ def i2i_gan_train(args, logger):
             generator.zero_grad()
     
             gen_res = generator(x)
+            gen_res = torch.cat([gen_res, y], axis=1)
             dis_res = discriminator(gen_res)
             gene_loss = gen_loss(dis_res, gen_res, y)
             gene_loss.backward()
