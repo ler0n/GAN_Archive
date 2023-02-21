@@ -20,27 +20,31 @@ def set_seed(random_seed=42):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-def get_image_plot(model, latent, channel, width, height):
+def get_image_plot(model, title, latent, channel, width, height):
     model.eval()
     with torch.no_grad():
         gen_res = model(latent).detach().view(24, channel, width, height).cpu()
-    
+    model.train()
     img = torchvision.utils.make_grid(gen_res, nrow=6, normalize=True, padding=1)
     fig, ax = plt.subplots()
     ax.imshow(img.permute(1, 2, 0))
     ax.axis('off')
     fig.tight_layout()
+    fig.suptitle(title)
     return fig
 
-def get_image_plot2(model, data, truth):
+def get_image_plot2(model, title, data, truth):
     model.eval()
-    gen_res = model(data.unsqueeze(0)).squeeze(0).detach().cpu()
+    with torch.no_grad():
+        gen_res = model(data.unsqueeze(0)).squeeze(0).detach().cpu()
+    model.train()
     imgs = [data.detach().cpu(), truth, gen_res]
     fig, axes = plt.subplots(1, 3)
     for ax, img in zip(axes, imgs):
         ax.imshow(img.permute(1, 2, 0))
         ax.axis('off')
     fig.tight_layout()
+    fig.suptitle(title)
     return fig
 
 def convert_path_to_tensor(data_path):

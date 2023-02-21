@@ -31,7 +31,8 @@ def get_model_and_dataloader(args):
         discriminator = DCDiscriminator(args.channel_num, args.channel_list, args.dropout_rate)
     if args.model_type.lower() == 'pix2pix':
         dataset = P2PDataset(args.data_path)
-        generator = P2PGenerator(args.channel_num, args.channel_list, args.dropout_rate)
+        generator = P2PGenerator(args.channel_num, args.channel_list, args.dropout_rate,
+                                 args.batchnrom_remove_cnt, args.dropout_apply_cnt)
         discriminator = P2PDiscriminator(args.channel_num, args.channel_list)
     dataloader = DataLoader(dataset, shuffle=True, batch_size=args.batch_size)
     return generator, discriminator, dataloader
@@ -60,13 +61,13 @@ def i2i_gan_train(args, logger):
             for _ in range(args.dis_iter):
                 discriminator.zero_grad()
                 
-                y_in = torch.cat([y, y], axis=1)
+                y_in = torch.cat([x, y], axis=1)
                 pos_res = discriminator(y_in)
 
                 with torch.no_grad():
                     gen_res = generator(x)
                 
-                gen_res = torch.cat([gen_res, y], axis=1)
+                gen_res = torch.cat([x, gen_res], axis=1)
                 neg_res = discriminator(gen_res)
                 disc_loss = dis_loss(pos_res, neg_res)
                 disc_loss.backward()
@@ -76,8 +77,8 @@ def i2i_gan_train(args, logger):
             generator.zero_grad()
     
             gen_res = generator(x)
-            gen_res = torch.cat([gen_res, y], axis=1)
-            dis_res = discriminator(gen_res)
+            dis_in = torch.cat([x, gen_res], axis=1)
+            dis_res = discriminator(dis_in)
             gene_loss = gen_loss(dis_res, gen_res, y)
             gene_loss.backward()
             g_loss += gene_loss.detach().cpu().item()
@@ -93,8 +94,7 @@ def i2i_gan_train(args, logger):
         logger.write_log(loss_dict)
 
         if epoch != args.epoch and epoch % args.save_interval != 0: continue
-        fig = get_image_plot2(generator, test_img, test_true)
-        fig.suptitle(f'Epoch {epoch} result')
+        fig = get_image_plot2(generator, f'EPOCH {epoch} result', test_img, test_true)
         logger.write_figure(epoch, fig)
         torch.save(generator.state_dict(), os.path.join(args.save_path, 'p2_generator.pth'))
         torch.save(discriminator.state_dict(), os.path.join(args.save_path, 'p2_discriminator.pth'))
@@ -158,8 +158,8 @@ def train(args, logger):
         logger.write_log(loss_dict)
 
         if epoch != args.epoch and epoch % args.save_interval != 0: continue
-        fig = get_image_plot(generator, latent_test, args.channel_num, args.width, args.height)
-        fig.suptitle(f'Epoch {epoch} result')
+        fig = get_image_plot(generator, f'EPOCH {epoch} result', latent_test, 
+							 args.channel_num, args.width, args.height)
         logger.write_figure(epoch, fig)
         torch.save(generator.state_dict(), os.path.join(args.save_path, 'generator.pth'))
         torch.save(discriminator.state_dict(), os.path.join(args.save_path, 'discriminator.pth'))
@@ -194,7 +194,11 @@ if __name__ == '__main__':
                       help='model layer channels')
     args.add_argument('--lmd', type=int, default=100,
                       help='value of lambda for calculate generator loss')
-    
+    args.add_argument('--batchnrom_remove_cnt', type=int, default=1,
+                      help='number of encoder layers to remove batchnorm')
+    args.add_argument('--dropout_apply_cnt', type=int, default=3,
+                      help='number of decoder layers to apply dropout')
+                      
     # log, save interval, path, model type option
     args.add_argument('--model_type', type=str, default='pix2pix', 
                       help='model type to train(gan, dcgan, pix2pix)')

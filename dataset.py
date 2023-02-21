@@ -61,8 +61,8 @@ class P2PDataset(Dataset):
 
     def _preprocess(self, data_path):
         self.x, self.y = [], []
-        x_path = glob.glob(os.path.join(data_path, '*-0.png')) 
-        y_path = glob.glob(os.path.join(data_path, '*-2.png')) 
+        x_path = sorted(glob.glob(os.path.join(data_path, '*-0.png')))
+        y_path = sorted(glob.glob(os.path.join(data_path, '*-2.png')))
         transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(0.5, 0.5)

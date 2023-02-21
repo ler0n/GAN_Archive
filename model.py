@@ -99,39 +99,52 @@ class DCDiscriminator(nn.Module):
 
 
 class Unet(nn.Module):
-    def __init__(self, channels, dropout_rate):
+    def __init__(self, channels, dropout_rate, batchnorm_remove_cnt, dropout_apply_cnt):
         super().__init__()
+        encoder_layer = [
+            nn.Conv2d(channels[0], channels[1], 4, 2, 1, bias=False)
+        ]
+        if batchnorm_remove_cnt < 1 : encoder_layer.append(nn.BatchNorm2d(channels[1]))
         self.encoder = nn.Sequential(
-            nn.Conv2d(channels[0], channels[1], 4, 2, 1, bias=False),
-            nn.BatchNorm2d(channels[1]),
+            *encoder_layer,
             nn.LeakyReLU(0.2)
         )
-        self.submodule = Unet(channels[1:], dropout_rate) if len(channels) > 2 else None
+        self.submodule = Unet(channels[1:], dropout_rate, 
+                              batchnorm_remove_cnt -1, dropout_apply_cnt - 1) if len(channels) > 2 else None
+        in_channel = channels[1] * 2 if len(channels) > 2 else channels[1]
+        decoder_layer = [
+            nn.ConvTranspose2d(in_channel, channels[0], 4, 2, 1, bias=False),
+            nn.BatchNorm2d(channels[0])
+        ]
+        if dropout_apply_cnt > 0: decoder_layer.append(nn.Dropout2d(dropout_rate))
         self.decoder = nn.Sequential(
-            nn.ConvTranspose2d(channels[1] * 2, channels[0], 4, 2, 1, bias=False),
-            nn.BatchNorm2d(channels[0]),
-            nn.Dropout2d(dropout_rate),
+            *decoder_layer,
             nn.ReLU()
         )
+        self._initialize()
+    
+    def _initialize(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.normal_(m.weight, 0.0, 0.02)
     
     def forward(self, x):
-        enc = self.encoder(x)
-        if self.submodule is not None:
-            x = self.submodule(enc)
-        else: x = enc
-        x = torch.concat([enc, x], axis=1)
+        x = self.encoder(x)
+        if self.submodule is not None:  
+            sub = self.submodule(x)
+            x = torch.concat([x, sub], axis=1)
         return self.decoder(x)
 
 
 class P2PGenerator(nn.Module):
-    def __init__(self, in_channel, channels, dropout_rate):
+    def __init__(self, in_channel, channels, dropout_rate, batchnorm_remove_cnt, dropout_apply_cnt):
         super().__init__()
         channels = [in_channel, *channels]
-        self.conv_layers = Unet(channels, dropout_rate)
+        self.conv_layers = Unet(channels, dropout_rate, batchnorm_remove_cnt, dropout_apply_cnt)
         self.activation = nn.Tanh()
     
     def forward(self, x):
-        enc = self.conv_layers(x)
+        x = self.conv_layers(x)
         return self.activation(x)
 
 
@@ -148,6 +161,12 @@ class P2PDiscriminator(nn.Module):
         layers.append(nn.Conv2d(channels[-1], 1, 3, 1, 0, bias=False))
         layers.append(nn.Sigmoid())
         self.layer = nn.Sequential(*layers)
-    
+        self._initialize()
+        
+    def _initialize(self):
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, 0.0, 0.02)
+
     def forward(self, x):
         return self.layer(x)
