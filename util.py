@@ -8,6 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt 
 
 from PIL import Image
+from torchvision import transforms
 
 
 def set_seed(random_seed=42):
@@ -30,6 +31,26 @@ def get_image_plot(model, latent, channel, width, height):
     ax.axis('off')
     fig.tight_layout()
     return fig
+
+def get_image_plot2(model, data, truth):
+    model.eval()
+    gen_res = model(data)
+    imgs = [data, truth, gen_res]
+    fig, axes = plt.subplots(1, 3)
+    for ax, img in zip(axes, imgs):
+        ax.imshow(img.permute(1, 2, 0))
+        ax.axis('off')
+    fig.tight_layout()
+    return fig
+
+def convert_path_to_tensor(data_path):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(0.5, 0.5)
+    ])
+    img = Image.open(f'{data_path}-0.png')
+    truth = Image.open(f'{data_path}-2.png')
+    return transform(img), transform(truth)
 
 def generate_gif_with_png(data_path, output_path, output_name, duration):
     image_paths = sorted(glob.glob(os.path.join(data_path, '*.png')), key=lambda x: int(x.split('_')[-2]))
