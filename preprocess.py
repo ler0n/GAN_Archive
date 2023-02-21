@@ -23,18 +23,20 @@ class DataGenerator:
         # letter_file에서 글자들 가져와서 하나의 문자열로 생성
         with open(args.letter_file, 'r', encoding='utf-8') as f:
             self.letters = ''.join(f.read().split())
+
+        self.font_size = 48 * min(args.width, args.height) // 64
         
 
     def generate(self):
-        for i, letter in enumerate(tqdm(self.letters)):
+        for letter in tqdm(self.letters):
             for j, font_path in enumerate(self.font_list):
                 img = Image.new('L', (self.width, self.height), color=0)
-                font = ImageFont.truetype(font_path, 48)
+                font = ImageFont.truetype(font_path, self.font_size)
                 drawing = ImageDraw.Draw(img)
-                l, t, r, b = drawing.textbbox((0, 0), "가", font)
+                l, t, r, b = drawing.textbbox((0, 0), letter, font)
                 drawing.text((((self.width - r + l) / 2), (self.height - b + t) / 2),
                               letter, fill=(255), font=font)
-                img.save(os.path.join(self.output_dir, f'{i}-{j}.png'), 'PNG')
+                img.save(os.path.join(self.output_dir, f'{letter}-{j}.png'), 'PNG')
 
 
 if __name__== '__main__':
