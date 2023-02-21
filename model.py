@@ -96,3 +96,58 @@ class DCDiscriminator(nn.Module):
 
     def forward(self, x):
         return self.layer(x).squeeze()
+
+
+class Unet(nn.Module):
+    def __init__(self, channels, dropout_rate):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(channels[0], channels[1], 4, 2, 1, bias=False),
+            nn.BatchNorm2d(channels[1]),
+            nn.LeakyReLU(0.2)
+        )
+        self.submodule = Unet(channels[1:], dropout_rate) if len(channels) > 2 else None
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(channels[1] * 2, channels[0], 4, 2, 1, bias=False),
+            nn.BatchNorm2d(channels[0]),
+            nn.Dropout2d(dropout_rate),
+            nn.ReLU()
+        )
+    
+    def forward(self, x):
+        enc = self.encoder(x)
+        if self.submodule is not None:
+            x = self.submodule(enc)
+        else: x = enc
+        x = torch.concat([enc, x], axis=1)
+        return self.decoder(x)
+
+
+class P2PGenerator(nn.Module):
+    def __init__(self, in_channel, channels, dropout_rate):
+        super().__init__()
+        channels = [in_channel, *channels]
+        self.conv_layers = Unet(channels, dropout_rate)
+        self.activation = nn.Tanh()
+    
+    def forward(self, x):
+        enc = self.conv_layers(x)
+        return self.activation(x)
+
+
+class P2PDiscriminator(nn.Module):
+    def __init__(self, in_channel, channels):
+        super().__init__()
+        layers = []
+
+        channels = [in_channel, *channels][:4]
+        for idx in range(1, len(channels)):
+            layers.append(nn.Conv2d(channels[idx - 1], channels[idx], 4, 2, 1, bias=False))
+            if idx != 1: layers.append(nn.BatchNorm2d(channels[idx]))
+            layers.append(nn.LeakyReLU(0.2))
+        layers.append(nn.Conv2d(channels[-1], 1, 3, 1, 0, bias=False))
+        layers.append(nn.Sigmoid())
+        self.layer = nn.Sequential(*layers)
+    
+    def forward(self, x):
+        return self.layer(x)
